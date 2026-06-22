@@ -468,6 +468,7 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 				dest := parts[1]
 				if !strings.HasPrefix(source, "/") {
 					source = filepath.Join(projectDir, source)
+					source = strings.Replace(source, svcCtx.ComposeDir, svcCtx.ComposeDirHost, 1)
 				}
 				hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", source, dest))
 			}
