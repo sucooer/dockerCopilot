@@ -99,6 +99,21 @@ jobs:
     steps:
       - name: Checkout code Now Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Check if version file changed
+        id: version_check
+        run: |
+          if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "^version$"; then
+            echo "changed=true" >> $GITHUB_ENV
+          else
+            echo "changed=false" >> $GITHUB_ENV
+          fi
+
+      - name: Get version from file
+        run: |
+          echo "version=$(cat version)" >> $GITHUB_ENV
 
       - name: Download Backend Artifacts
         uses: actions/download-artifact@v4
@@ -119,6 +134,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker images
+        if: env.changed == 'true'
         uses: docker/build-push-action@v5.0.0
         with:
           context: .
@@ -126,4 +142,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/dockercopilot:latest-dev
+            ${{ secrets.DOCKERHUB_USERNAME }}/dockercopilot:${{ env.version }}
           push: true
+
+      - name: Skip push notification
+        if: env.changed != 'true'
+        run: echo "version file not changed, skipping Docker push"
