@@ -28,7 +28,7 @@ func NewUpLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpLogic {
 func (l *UpLogic) Up(req *types.ComposeNameReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
 	projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
-	output, err := utiles.ComposeUp(projectDir)
+	output, err := utiles.ComposeUp(l.svcCtx, projectDir)
 	if err != nil {
 		resp.Code = 400
 		resp.Msg = err.Error()
