@@ -12,6 +12,7 @@ import (
 	container "github.com/onlyLTY/dockerCopilot/internal/handler/container"
 	icons "github.com/onlyLTY/dockerCopilot/internal/handler/icons"
 	image "github.com/onlyLTY/dockerCopilot/internal/handler/image"
+	notify "github.com/onlyLTY/dockerCopilot/internal/handler/notify"
 	progress "github.com/onlyLTY/dockerCopilot/internal/handler/progress"
 	version "github.com/onlyLTY/dockerCopilot/internal/handler/version"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
@@ -218,6 +219,28 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Method:  http.MethodPost,
 				Path:    "/auto-update/run",
 				Handler: autoupdate.RunHandler(serverCtx),
+			},
+		},
+		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		rest.WithPrefix("/api"),
+	)
+
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/notify/config",
+				Handler: notify.GetConfigHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPut,
+				Path:    "/notify/config",
+				Handler: notify.UpdateConfigHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/notify/test",
+				Handler: notify.TestHandler(serverCtx),
 			},
 		},
 		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),

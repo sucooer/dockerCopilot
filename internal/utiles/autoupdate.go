@@ -130,9 +130,11 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 			err := UpdateContainer(ctx, c.ID, containerName, c.Image, true, taskID)
 			if err != nil {
 				logx.Errorf("auto-update: update failed for %s: %v", shortID, err)
+				SendNotify(containerName, c.Image, false, err.Error())
 			} else {
 				setting.LastUpdate = now.Format(time.RFC3339)
 				logx.Infof("auto-update: updated %s successfully", shortID)
+				SendNotify(containerName, c.Image, true, "")
 			}
 		}
 
