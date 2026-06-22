@@ -16,6 +16,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var composeFileNames = []string{
+	"docker-compose.yml",
+	"docker-compose.yaml",
+	"compose.yml",
+	"compose.yaml",
+}
+
+func findComposeFile(dir string) (string, error) {
+	for _, name := range composeFileNames {
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("no compose file found in %s", dir)
+}
+
 type ComposeProject struct {
 	Name    string `json:"name"`
 	DirPath string `json:"dirPath"`
@@ -55,11 +72,11 @@ func ListComposeProjects(composeDir string) ([]ComposeProject, error) {
 	var projects []ComposeProject
 	for _, entry := range entries {
 		if entry.IsDir() {
-			composeFile := filepath.Join(composeDir, entry.Name(), "docker-compose.yml")
-			if _, err := os.Stat(composeFile); err == nil {
+			dir := filepath.Join(composeDir, entry.Name())
+			if _, err := findComposeFile(dir); err == nil {
 				projects = append(projects, ComposeProject{
 					Name:    entry.Name(),
-					DirPath: filepath.Join(composeDir, entry.Name()),
+					DirPath: dir,
 				})
 			}
 		}
@@ -68,7 +85,10 @@ func ListComposeProjects(composeDir string) ([]ComposeProject, error) {
 }
 
 func GetComposeContent(projectDir string) (string, error) {
-	composeFile := filepath.Join(projectDir, "docker-compose.yml")
+	composeFile, err := findComposeFile(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read compose file: %w", err)
+	}
 	data, err := os.ReadFile(composeFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to read compose file: %w", err)
@@ -109,7 +129,10 @@ func DeleteComposeProject(projectDir string) error {
 
 func ComposeUp(svcCtx *svc.ServiceContext, projectDir string) (string, error) {
 	ctx := context.Background()
-	composeFilePath := filepath.Join(projectDir, "docker-compose.yml")
+	composeFilePath, err := findComposeFile(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read compose file: %w", err)
+	}
 	data, err := os.ReadFile(composeFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read compose file: %w", err)
