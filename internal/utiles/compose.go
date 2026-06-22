@@ -49,7 +49,7 @@ type composeService struct {
 	ContainerName string            `yaml:"container_name"`
 	Ports         []string          `yaml:"ports"`
 	Volumes       []string          `yaml:"volumes"`
-	Environment   map[string]string `yaml:"environment"`
+	Environment   envMap            `yaml:"environment"`
 	Restart       string            `yaml:"restart"`
 	Networks      []string          `yaml:"networks"`
 	DependsOn     []string          `yaml:"depends_on"`
@@ -62,6 +62,29 @@ type composeNetwork struct {
 
 type composeVolume struct {
 	Driver string `yaml:"driver"`
+}
+
+type envMap map[string]string
+
+func (e *envMap) UnmarshalYAML(value *yaml.Node) error {
+	var m map[string]string
+	if err := value.Decode(&m); err == nil {
+		*e = m
+		return nil
+	}
+	var list []string
+	if err := value.Decode(&list); err != nil {
+		return err
+	}
+	m = make(map[string]string, len(list))
+	for _, item := range list {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	*e = m
+	return nil
 }
 
 func ListComposeProjects(composeDir string) ([]ComposeProject, error) {
