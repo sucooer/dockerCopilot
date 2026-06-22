@@ -9,7 +9,7 @@ COPY dc-back/dist/$TARGETPLATFORM/dockerCopilot ./dockerCopilot
 COPY dc-back/etc/. ./etc
 COPY start.sh ./start.sh
 
-RUN apk add --no-cache tzdata docker-cli docker-compose \
+RUN apk add --no-cache tzdata ca-certificates-bundle \
     && chmod +x start.sh \
     && chmod +x dockerCopilot
 

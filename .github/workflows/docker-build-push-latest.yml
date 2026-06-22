@@ -1,10 +1,9 @@
-name: docker-build-push-latest-dev
+name: docker-build-push-latest
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - latest-dev
       - main
 
 jobs:
