@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - latest-dev
+      - main
 
 jobs:
   build-frontend:
@@ -15,7 +16,7 @@ jobs:
         with:
           repository: sucooer/Docker-Copilot-React
           path: './frontend'
-          ref: 'master'
+          ref: 'main'
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
