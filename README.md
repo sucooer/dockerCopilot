@@ -16,6 +16,8 @@
 7. 更新进度查看
 8. 备份容器设置
 9. 恢复容器设置
+10. Compose 项目管理（创建、编辑、部署）
+11. 容器自动更新（按容器独立配置检查频率）
 
 ## 使用
 
@@ -25,19 +27,17 @@ docker compose 安装
 services:
   dockercopilot:
     container_name: dockercopilot
-    restart: always
-    privileged: true
-    network_mode: bridge
+    restart: unless-stopped
     ports:
       - 12712:12712
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
+      - ./compose:/data/compose
     environment:
       - TZ=Asia/Shanghai
-      - DOCKER_HOST=unix:///var/run/docker.sock
       - secretKey=密码，不少于八位且非纯数字
-    image: 0nlylty/dockercopilot:latest
+    image: anyear/dockercopilot:latest
 ```
 
 ## 开发环境
