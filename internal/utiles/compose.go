@@ -2,13 +2,16 @@ package utiles
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	dockerMsgType "github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
@@ -299,6 +302,212 @@ func ComposeUp(svcCtx *svc.ServiceContext, projectDir string) (string, error) {
 	}
 
 	return output.String(), nil
+}
+
+func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
+	ctx := context.Background()
+
+	status := func(pct int, msg, detail string) {
+		svcCtx.UpdateProgress(taskID, svc.TaskProgress{
+			TaskID: taskID, Percentage: pct, Name: projectDir,
+			Message: msg, DetailMsg: detail, IsDone: false,
+		})
+	}
+	done := func(msg, detail string) {
+		svcCtx.UpdateProgress(taskID, svc.TaskProgress{
+			TaskID: taskID, Percentage: 100, Name: projectDir,
+			Message: msg, DetailMsg: detail, IsDone: true,
+		})
+	}
+	fail := func(msg, detail string) {
+		svcCtx.UpdateProgress(taskID, svc.TaskProgress{
+			TaskID: taskID, Percentage: 0, Name: projectDir,
+			Message: msg, DetailMsg: detail, IsDone: true,
+		})
+	}
+
+	status(0, "开始部署", "正在解析 compose 文件...")
+
+	composeFilePath, err := findComposeFile(projectDir)
+	if err != nil {
+		fail("部署失败", fmt.Sprintf("找不到 compose 文件: %v", err))
+		return
+	}
+	data, err := os.ReadFile(composeFilePath)
+	if err != nil {
+		fail("部署失败", fmt.Sprintf("读取 compose 文件失败: %v", err))
+		return
+	}
+
+	var cf composeFile
+	if err := yaml.Unmarshal(data, &cf); err != nil {
+		fail("部署失败", fmt.Sprintf("解析 compose 文件失败: %v", err))
+		return
+	}
+
+	status(5, "检查网络", "正在检查 Docker 网络...")
+
+	for networkName := range cf.Networks {
+		_, err := svcCtx.DockerClient.NetworkInspect(ctx, networkName, network.InspectOptions{})
+		if err != nil {
+			status(8, "创建网络", fmt.Sprintf("正在创建网络 %s...", networkName))
+			_, err := svcCtx.DockerClient.NetworkCreate(ctx, networkName, network.CreateOptions{
+				Driver: "bridge",
+			})
+			if err != nil {
+				fail("创建网络失败", fmt.Sprintf("网络 %s 创建失败: %v", networkName, err))
+				return
+			}
+		}
+	}
+
+	orderedServices := orderServices(cf.Services)
+	total := len(orderedServices)
+	for svcIdx, svcName := range orderedServices {
+		service := cf.Services[svcName]
+
+		if service.Image == "" {
+			fail("部署失败", fmt.Sprintf("服务 %s 未指定镜像", svcName))
+			return
+		}
+
+		basePct := 10 + (svcIdx * 70 / total)
+		pct := basePct
+
+		status(pct, "拉取镜像", fmt.Sprintf("[%s] 正在拉取 %s ...", svcName, service.Image))
+
+		reader, err := svcCtx.DockerClient.ImagePull(ctx, service.Image, image.PullOptions{})
+		if err != nil {
+			fail("拉取镜像失败", fmt.Sprintf("服务 %s 镜像拉取失败: %v", svcName, err))
+			return
+		}
+
+		decoder := json.NewDecoder(reader)
+		for {
+			var msg dockerMsgType.JSONMessage
+			if err := decoder.Decode(&msg); err != nil {
+				if err == io.EOF {
+					break
+				}
+				break
+			}
+			if msg.Error != nil {
+				fail("拉取镜像失败", fmt.Sprintf("服务 %s: %v", svcName, msg.Error))
+				reader.Close()
+				return
+			}
+			detail := fmt.Sprintf("[%s] %s", svcName, msg.Status)
+			if msg.Progress != nil {
+				detail += " " + msg.Progress.String()
+			}
+			svcCtx.UpdateProgress(taskID, svc.TaskProgress{
+				TaskID: taskID, Percentage: pct, Name: projectDir,
+				Message: "拉取镜像中", DetailMsg: detail, IsDone: false,
+			})
+		}
+		reader.Close()
+
+		pct = basePct + 5
+		status(pct, "配置容器", fmt.Sprintf("[%s] 正在配置容器...", svcName))
+
+		containerConfig := &container.Config{
+			Image: service.Image,
+			Env:   make([]string, 0),
+		}
+
+		if service.ContainerName != "" {
+			containerConfig.Hostname = svcName
+		}
+		if service.Command != "" {
+			containerConfig.Cmd = strings.Fields(service.Command)
+		}
+
+		for k, v := range service.Environment {
+			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		restartPolicy := container.RestartPolicyMode(strings.ToLower(service.Restart))
+		if restartPolicy == "" {
+			restartPolicy = container.RestartPolicyMode("no")
+		}
+		hostConfig := &container.HostConfig{
+			RestartPolicy: container.RestartPolicy{Name: restartPolicy},
+		}
+
+		for _, portStr := range service.Ports {
+			parts := strings.Split(portStr, ":")
+			var hostPort, containerPort string
+			switch len(parts) {
+			case 2:
+				hostPort = parts[0]
+				containerPort = parts[1]
+			case 3:
+				hostPort = parts[1]
+				containerPort = parts[2]
+			default:
+				continue
+			}
+			portProto := nat.Port(fmt.Sprintf("%s/tcp", containerPort))
+			if containerConfig.ExposedPorts == nil {
+				containerConfig.ExposedPorts = nat.PortSet{}
+			}
+			containerConfig.ExposedPorts[portProto] = struct{}{}
+			hostPortInt, _ := strconv.Atoi(hostPort)
+			if hostConfig.PortBindings == nil {
+				hostConfig.PortBindings = nat.PortMap{}
+			}
+			hostConfig.PortBindings[portProto] = []nat.PortBinding{
+				{HostPort: strconv.Itoa(hostPortInt)},
+			}
+		}
+
+		for _, volStr := range service.Volumes {
+			parts := strings.Split(volStr, ":")
+			if len(parts) >= 2 {
+				source := parts[0]
+				dest := parts[1]
+				if !strings.HasPrefix(source, "/") {
+					source = filepath.Join(projectDir, source)
+				}
+				hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", source, dest))
+			}
+		}
+
+		var networkingConfig *network.NetworkingConfig
+		if len(service.Networks) > 0 {
+			networkingConfig = &network.NetworkingConfig{
+				EndpointsConfig: make(map[string]*network.EndpointSettings),
+			}
+			for _, netName := range service.Networks {
+				networkingConfig.EndpointsConfig[netName] = &network.EndpointSettings{}
+			}
+		}
+
+		containerName := service.ContainerName
+		if containerName == "" {
+			containerName = svcName
+		}
+
+		pct = basePct + 20
+		status(pct, "创建容器", fmt.Sprintf("[%s] 正在创建容器 %s...", svcName, containerName))
+
+		createResp, err := svcCtx.DockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
+		if err != nil {
+			fail("创建容器失败", fmt.Sprintf("服务 %s: %v", svcName, err))
+			return
+		}
+
+		pct = basePct + 30
+		status(pct, "启动容器", fmt.Sprintf("[%s] 正在启动容器 %s (%s)...", svcName, containerName, createResp.ID[:12]))
+
+		err = svcCtx.DockerClient.ContainerStart(ctx, createResp.ID, container.StartOptions{})
+		if err != nil {
+			fail("启动容器失败", fmt.Sprintf("服务 %s: %v", svcName, err))
+			return
+		}
+	}
+
+	done("部署完成", "所有服务已成功部署")
 }
 
 func orderServices(services map[string]composeService) []string {

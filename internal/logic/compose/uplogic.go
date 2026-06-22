@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 	"github.com/onlyLTY/dockerCopilot/internal/types"
 	"github.com/onlyLTY/dockerCopilot/internal/utiles"
@@ -27,20 +28,24 @@ func NewUpLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpLogic {
 
 func (l *UpLogic) Up(req *types.ComposeNameReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
-	projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
-	output, err := utiles.ComposeUp(l.svcCtx, projectDir)
-	if err != nil {
-		resp.Code = 400
-		resp.Msg = err.Error()
-		resp.Data = map[string]interface{}{
-			"output": output,
-		}
-		return resp, err
-	}
+	taskID := uuid.New().String()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.Errorf("Recovered from panic in ComposeUp: %v", r)
+				l.svcCtx.UpdateProgress(taskID, svc.TaskProgress{
+					TaskID: taskID, Percentage: 0, Message: "部署异常",
+					DetailMsg: "panic", IsDone: true,
+				})
+			}
+		}()
+		projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
+		utiles.AsyncComposeUp(l.svcCtx, projectDir, taskID)
+	}()
 	resp.Code = 200
 	resp.Msg = "success"
 	resp.Data = map[string]interface{}{
-		"output": output,
+		"taskID": taskID,
 	}
 	return resp, nil
 }
