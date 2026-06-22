@@ -93,3 +93,16 @@ type VersionReq struct {
 type GetNewImageReq struct {
 	ImageNameAndTag string `json:"image_name_and_tag"`
 }
+
+type ComposeNameReq struct {
+	Name string `path:"name"`
+}
+
+type ComposeCreateReq struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+type ComposeUpdateReq struct {
+	Content string `json:"content"`
+}

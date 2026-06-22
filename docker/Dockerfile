@@ -9,7 +9,7 @@ COPY dc-back/dist/$TARGETPLATFORM/dockerCopilot ./dockerCopilot
 COPY dc-back/etc/. ./etc
 COPY start.sh ./start.sh
 
-RUN apk add --no-cache tzdata \
+RUN apk add --no-cache tzdata docker-cli docker-compose \
     && chmod +x start.sh \
     && chmod +x dockerCopilot
 
@@ -17,6 +17,7 @@ RUN apk add --no-cache tzdata \
 ENV secretKey="" \
     DOCKER_HOST="unix:///var/run/docker.sock" \
     BACKUP_DIR="/data/backups" \
+    COMPOSE_DIR="/data/compose" \
     TZ="Asia/Shanghai"
 
 VOLUME ["/data"]

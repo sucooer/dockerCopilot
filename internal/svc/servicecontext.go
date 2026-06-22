@@ -20,6 +20,7 @@ type ServiceContext struct {
 	IndexCheckMiddleware       rest.Middleware
 	ProgressStore              ProgressStoreType
 	DockerClient               *client.Client
+	ComposeDir                 string
 	mu                         sync.Mutex
 }
 
@@ -39,8 +40,13 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	if err != nil {
 		logx.Errorf("Unable to create docker client: %s", err)
 	}
+	composeDir := c.ComposeDir
+	if composeDir == "" {
+		composeDir = "/data/compose"
+	}
 	return &ServiceContext{
 		Config:        c,
+		ComposeDir:    composeDir,
 		HubImageInfo:  module.NewImageCheck(),
 		ProgressStore: make(ProgressStoreType),
 		DockerClient:  cli,

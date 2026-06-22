@@ -69,6 +69,10 @@ func main() {
 		logx.Errorf("Failed to create data directory: %v", err)
 	}
 
+	if err := os.MkdirAll(ctx.ComposeDir, 0755); err != nil {
+		logx.Errorf("Failed to create compose directory: %v", err)
+	}
+
 	imageLogosPath := "/data/config/imageLogos.js"
 	if _, err := os.Stat(imageLogosPath); os.IsNotExist(err) {
 		defaultConfig := []byte(`// 自定义镜像logo配置

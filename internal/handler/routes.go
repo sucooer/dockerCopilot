@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	auth "github.com/onlyLTY/dockerCopilot/internal/handler/auth"
+	compose "github.com/onlyLTY/dockerCopilot/internal/handler/compose"
 	container "github.com/onlyLTY/dockerCopilot/internal/handler/container"
 	icons "github.com/onlyLTY/dockerCopilot/internal/handler/icons"
 	image "github.com/onlyLTY/dockerCopilot/internal/handler/image"
@@ -157,6 +158,43 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Method:  http.MethodGet,
 				Path:    "/version",
 				Handler: version.VersionHandler(serverCtx),
+			},
+		},
+		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		rest.WithPrefix("/api"),
+	)
+
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/compose",
+				Handler: compose.ListHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/compose/:name",
+				Handler: compose.GetHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/compose",
+				Handler: compose.CreateHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPut,
+				Path:    "/compose/:name",
+				Handler: compose.UpdateHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodDelete,
+				Path:    "/compose/:name",
+				Handler: compose.DeleteHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/compose/:name/up",
+				Handler: compose.UpHandler(serverCtx),
 			},
 		},
 		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
