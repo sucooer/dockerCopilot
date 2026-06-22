@@ -100,6 +100,7 @@ export const customImageLogos = {
 			panic(err)
 		}
 		ctx.HubImageInfo.CheckUpdate(list)
+		utiles.RunAutoUpdateScan(ctx)
 	})
 	if err != nil {
 		logx.Errorf("panic添加定时任务出错: %v", err)
