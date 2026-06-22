@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	auth "github.com/onlyLTY/dockerCopilot/internal/handler/auth"
+	autoupdate "github.com/onlyLTY/dockerCopilot/internal/handler/autoupdate"
 	compose "github.com/onlyLTY/dockerCopilot/internal/handler/compose"
 	container "github.com/onlyLTY/dockerCopilot/internal/handler/container"
 	icons "github.com/onlyLTY/dockerCopilot/internal/handler/icons"
@@ -195,6 +196,28 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Method:  http.MethodPost,
 				Path:    "/compose/:name/up",
 				Handler: compose.UpHandler(serverCtx),
+			},
+		},
+		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		rest.WithPrefix("/api"),
+	)
+
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/auto-update",
+				Handler: autoupdate.ListHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPut,
+				Path:    "/auto-update/:id",
+				Handler: autoupdate.UpdateHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/auto-update/run",
+				Handler: autoupdate.RunHandler(serverCtx),
 			},
 		},
 		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),

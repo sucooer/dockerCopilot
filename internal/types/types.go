@@ -94,6 +94,26 @@ type GetNewImageReq struct {
 	ImageNameAndTag string `json:"image_name_and_tag"`
 }
 
+type AutoUpdateListReq struct {
+}
+
+type AutoUpdateItem struct {
+	ContainerID     string `json:"containerId"`
+	ContainerName   string `json:"containerName"`
+	Image           string `json:"image"`
+	Status          string `json:"status"`
+	Enabled         bool   `json:"enabled"`
+	IntervalMinutes int    `json:"intervalMinutes"`
+	LastCheck       string `json:"lastCheck,omitempty"`
+	LastUpdate      string `json:"lastUpdate,omitempty"`
+}
+
+type AutoUpdateUpdateReq struct {
+	IdReq
+	Enabled         bool `json:"enabled"`
+	IntervalMinutes int  `json:"intervalMinutes"`
+}
+
 type ComposeNameReq struct {
 	Name string `path:"name"`
 }

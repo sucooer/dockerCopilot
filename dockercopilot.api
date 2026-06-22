@@ -231,3 +231,19 @@ service dockerCopilot {
 	post /compose/:name/up (ComposeNameReq) returns (Resp)
 }
 
+@server(
+	prefix: /api
+	group: autoupdate
+	jwt: Auth
+)
+service dockerCopilot {
+	@handler autoUpdateList
+	get /auto-update returns (Resp)
+
+	@handler autoUpdateUpdate
+	put /auto-update/:id returns (Resp)
+
+	@handler autoUpdateRun
+	post /auto-update/run returns (Resp)
+}
+
