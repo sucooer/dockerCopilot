@@ -91,6 +91,19 @@ type VersionReq {
 	Type string `form:"type"`
 }
 
+type ComposeNameReq {
+	Name string `path:"name"`
+}
+
+type ComposeCreateReq {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+type ComposeUpdateReq {
+	Content string `json:"content"`
+}
+
 service dockerCopilot {
 	@handler webindex
 		get /
@@ -191,5 +204,30 @@ service dockerCopilot {
 
 	@handler obtain
 	get / returns (Resp)
+}
+
+@server(
+	prefix: /api
+	group: compose
+	jwt: Auth
+)
+service dockerCopilot {
+	@handler composeList
+	get /compose returns (Resp)
+
+	@handler composeGet
+	get /compose/:name (ComposeNameReq) returns (Resp)
+
+	@handler composeCreate
+	post /compose (ComposeCreateReq) returns (Resp)
+
+	@handler composeUpdate
+	put /compose/:name (ComposeNameReq) returns (Resp)
+
+	@handler composeDelete
+	delete /compose/:name (ComposeNameReq) returns (Resp)
+
+	@handler composeUp
+	post /compose/:name/up (ComposeNameReq) returns (Resp)
 }
 
