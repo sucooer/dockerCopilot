@@ -6,6 +6,7 @@ import (
 	"github.com/onlyLTY/dockerCopilot/internal/module"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/rest"
+	"os"
 	"sync"
 )
 
@@ -21,6 +22,7 @@ type ServiceContext struct {
 	ProgressStore              ProgressStoreType
 	DockerClient               *client.Client
 	ComposeDir                 string
+	ComposeDirHost             string
 	mu                         sync.Mutex
 }
 
@@ -44,12 +46,17 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	if composeDir == "" {
 		composeDir = "/data/compose"
 	}
+	composeDirHost := os.Getenv("COMPOSE_DIR_HOST")
+	if composeDirHost == "" {
+		composeDirHost = composeDir
+	}
 	return &ServiceContext{
-		Config:        c,
-		ComposeDir:    composeDir,
-		HubImageInfo:  module.NewImageCheck(),
-		ProgressStore: make(ProgressStoreType),
-		DockerClient:  cli,
+		Config:         c,
+		ComposeDir:     composeDir,
+		ComposeDirHost: composeDirHost,
+		HubImageInfo:   module.NewImageCheck(),
+		ProgressStore:  make(ProgressStoreType),
+		DockerClient:   cli,
 	}
 }
 
