@@ -26,7 +26,7 @@ func NewListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ListLogic {
 
 func (l *ListLogic) List() (resp *types.Resp, err error) {
 	resp = &types.Resp{}
-	projects, err := utiles.ListComposeProjects(l.svcCtx.ComposeDir)
+	projects, err := utiles.ListComposeProjects(l.svcCtx)
 	if err != nil {
 		resp.Code = 500
 		resp.Msg = err.Error()
