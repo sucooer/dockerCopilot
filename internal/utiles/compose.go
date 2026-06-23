@@ -37,8 +37,10 @@ func findComposeFile(dir string) (string, error) {
 }
 
 type ComposeProject struct {
-	Name    string `json:"name"`
-	DirPath string `json:"dirPath"`
+	Name         string `json:"name"`
+	DirPath      string `json:"dirPath"`
+	Deployed     bool   `json:"deployed"`
+	RunningCount int    `json:"runningCount"`
 }
 
 type composeFile struct {
@@ -90,21 +92,55 @@ func (e *envMap) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func ListComposeProjects(composeDir string) ([]ComposeProject, error) {
+func ListComposeProjects(svcCtx *svc.ServiceContext) ([]ComposeProject, error) {
+	composeDir := svcCtx.ComposeDir
 	entries, err := os.ReadDir(composeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read compose directory: %w", err)
 	}
+
+	containerList, _ := svcCtx.DockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	containerNames := make(map[string]bool)
+	for _, c := range containerList {
+		for _, name := range c.Names {
+			containerNames[strings.TrimPrefix(name, "/")] = true
+		}
+	}
+
 	var projects []ComposeProject
 	for _, entry := range entries {
 		if entry.IsDir() {
 			dir := filepath.Join(composeDir, entry.Name())
-			if _, err := findComposeFile(dir); err == nil {
-				projects = append(projects, ComposeProject{
-					Name:    entry.Name(),
-					DirPath: dir,
-				})
+			composePath, err := findComposeFile(dir)
+			if err != nil {
+				continue
 			}
+			data, err := os.ReadFile(composePath)
+			if err != nil {
+				continue
+			}
+			var cf composeFile
+			if err := yaml.Unmarshal(data, &cf); err != nil {
+				continue
+			}
+
+			runningCount := 0
+			for svcName, svc := range cf.Services {
+				name := svc.ContainerName
+				if name == "" {
+					name = svcName
+				}
+				if containerNames[name] {
+					runningCount++
+				}
+			}
+
+			projects = append(projects, ComposeProject{
+				Name:         entry.Name(),
+				DirPath:      dir,
+				Deployed:     runningCount > 0,
+				RunningCount: runningCount,
+			})
 		}
 	}
 	return projects, nil
