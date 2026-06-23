@@ -1,12 +1,14 @@
 package svc
 
 import (
+	"bufio"
 	"github.com/docker/docker/client"
 	"github.com/onlyLTY/dockerCopilot/internal/config"
 	"github.com/onlyLTY/dockerCopilot/internal/module"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/rest"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -48,7 +50,13 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	}
 	composeDirHost := os.Getenv("COMPOSE_DIR_HOST")
 	if composeDirHost == "" {
-		composeDirHost = composeDir
+		composeDirHost = detectComposeDirHost(composeDir)
+		if composeDirHost == "" {
+			logx.Infof("COMPOSE_DIR_HOST not set and mountinfo detection failed, falling back to %s", composeDir)
+			composeDirHost = composeDir
+		} else {
+			logx.Infof("Auto-detected COMPOSE_DIR_HOST=%s from mountinfo", composeDirHost)
+		}
 	}
 	return &ServiceContext{
 		Config:         c,
@@ -71,4 +79,24 @@ func (ctx *ServiceContext) GetProgress(taskID string) (TaskProgress, bool) {
 	defer ctx.mu.Unlock()
 	progress, ok := ctx.ProgressStore[taskID]
 	return progress, ok
+}
+
+func detectComposeDirHost(composeDir string) string {
+	f, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 5 {
+			continue
+		}
+		if fields[4] == composeDir {
+			return fields[3]
+		}
+	}
+	return ""
 }
