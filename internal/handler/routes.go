@@ -14,6 +14,7 @@ import (
 	image "github.com/onlyLTY/dockerCopilot/internal/handler/image"
 	notify "github.com/onlyLTY/dockerCopilot/internal/handler/notify"
 	progress "github.com/onlyLTY/dockerCopilot/internal/handler/progress"
+	restartschedule "github.com/onlyLTY/dockerCopilot/internal/handler/restartschedule"
 	version "github.com/onlyLTY/dockerCopilot/internal/handler/version"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 
@@ -246,6 +247,28 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Method:  http.MethodPost,
 				Path:    "/notify/test",
 				Handler: notify.TestHandler(serverCtx),
+			},
+		},
+		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		rest.WithPrefix("/api"),
+	)
+
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/restart-schedule",
+				Handler: restartschedule.ListHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPut,
+				Path:    "/restart-schedule/:id",
+				Handler: restartschedule.UpdateHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/restart-schedule/run",
+				Handler: restartschedule.RunHandler(serverCtx),
 			},
 		},
 		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
