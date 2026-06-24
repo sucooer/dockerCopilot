@@ -49,6 +49,24 @@ type composeFile struct {
 	Volumes  map[string]composeVolume  `yaml:"volumes"`
 }
 
+type composeNetworks []string
+
+func (n *composeNetworks) UnmarshalYAML(value *yaml.Node) error {
+	var list []string
+	if err := value.Decode(&list); err == nil {
+		*n = list
+		return nil
+	}
+	var mapping map[string]yaml.Node
+	if err := value.Decode(&mapping); err != nil {
+		return err
+	}
+	for name := range mapping {
+		*n = append(*n, name)
+	}
+	return nil
+}
+
 type composeService struct {
 	Image         string            `yaml:"image"`
 	ContainerName string            `yaml:"container_name"`
@@ -56,7 +74,7 @@ type composeService struct {
 	Volumes       []string          `yaml:"volumes"`
 	Environment   envMap            `yaml:"environment"`
 	Restart       string            `yaml:"restart"`
-	Networks      []string          `yaml:"networks"`
+	Networks      composeNetworks   `yaml:"networks"`
 	DependsOn     []string          `yaml:"depends_on"`
 	Command       string            `yaml:"command"`
 }
