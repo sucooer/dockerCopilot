@@ -1,6 +1,7 @@
 package utiles
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/google/uuid"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 	"github.com/onlyLTY/dockerCopilot/internal/types"
@@ -151,6 +153,10 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 		if err := SaveAutoUpdateConfig(cfg); err != nil {
 			logx.Errorf("auto-update: failed to save config: %v", err)
 		}
+	}
+
+	if _, err := ctx.DockerClient.ImagesPrune(context.Background(), filters.NewArgs()); err != nil {
+		logx.Errorf("auto-update: failed to prune dangling images: %v", err)
 	}
 }
 
