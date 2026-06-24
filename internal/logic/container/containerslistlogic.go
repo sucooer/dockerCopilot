@@ -5,6 +5,7 @@ import (
 	"github.com/onlyLTY/dockerCopilot/internal/utiles"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 	"github.com/onlyLTY/dockerCopilot/internal/types"
 
@@ -18,14 +19,15 @@ type ContainersListLogic struct {
 }
 
 type Info struct {
-	Id          string `json:"id"`
-	Status      string `json:"status"`
-	Name        string `json:"name"`
-	UsingImage  string `json:"usingImage"`
-	CreateImage string `json:"createImage"`
-	CreateTime  string `json:"createTime"`
-	RunningTime string `json:"runningTime"`
-	HaveUpdate  bool   `json:"haveUpdate"`
+	Id          string            `json:"id"`
+	Status      string            `json:"status"`
+	Name        string            `json:"name"`
+	UsingImage  string            `json:"usingImage"`
+	CreateImage string            `json:"createImage"`
+	CreateTime  string            `json:"createTime"`
+	RunningTime string            `json:"runningTime"`
+	HaveUpdate  bool              `json:"haveUpdate"`
+	Ports       []dockerTypes.Port `json:"ports"`
 }
 
 func NewContainersListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ContainersListLogic {
@@ -76,6 +78,7 @@ func (l *ContainersListLogic) ContainersList() (resp *types.Resp, err error) {
 		containerInfo.CreateTime = t.Format("2006-01-02 15:04:05")
 		containerInfo.RunningTime = v.Status
 		containerInfo.HaveUpdate = v.Update
+		containerInfo.Ports = v.Ports
 		containerInfoList = append(containerInfoList, containerInfo)
 	}
 	resp.Data = containerInfoList
