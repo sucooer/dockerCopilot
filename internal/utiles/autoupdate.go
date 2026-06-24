@@ -120,6 +120,7 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 
 		needsUpdate := exists && checkResult.NeedUpdate
 
+		targetID := shortID
 		if needsUpdate {
 			logx.Infof("auto-update: updating %s (%s)", shortID, c.Image)
 			var containerName string
@@ -127,18 +128,22 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 				containerName = strings.TrimPrefix(c.Names[0], "/")
 			}
 			taskID := uuid.New().String()
-			err := UpdateContainer(ctx, c.ID, containerName, c.Image, true, taskID)
+			newFullID, err := UpdateContainer(ctx, c.ID, containerName, c.Image, true, taskID)
 			if err != nil {
 				logx.Errorf("auto-update: update failed for %s: %v", shortID, err)
 				SendNotify(containerName, c.Image, false, err.Error())
 			} else {
 				setting.LastUpdate = now.Format(time.RFC3339)
-				logx.Infof("auto-update: updated %s successfully", shortID)
+				targetID = newFullID[:12]
+				logx.Infof("auto-update: updated %s successfully, new ID: %s", shortID, targetID)
 				SendNotify(containerName, c.Image, true, "")
 			}
 		}
 
-		cfg.Containers[shortID] = setting
+		if targetID != shortID {
+			delete(cfg.Containers, shortID)
+		}
+		cfg.Containers[targetID] = setting
 		changed = true
 	}
 
@@ -147,4 +152,67 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 			logx.Errorf("auto-update: failed to save config: %v", err)
 		}
 	}
+}
+
+func MigrateAutoUpdateConfig(oldFullID, newFullID string) {
+	if oldFullID == newFullID {
+		return
+	}
+	oldShortID := oldFullID[:12]
+	newShortID := newFullID[:12]
+	if oldShortID == newShortID {
+		return
+	}
+
+	cfg, err := LoadAutoUpdateConfig()
+	if err != nil {
+		logx.Errorf("auto-update: failed to load config for migration: %v", err)
+		return
+	}
+
+	setting, ok := cfg.Containers[oldShortID]
+	if !ok {
+		return
+	}
+
+	cfg.Containers[newShortID] = setting
+	delete(cfg.Containers, oldShortID)
+
+	if err := SaveAutoUpdateConfig(cfg); err != nil {
+		logx.Errorf("auto-update: failed to save config after migration: %v", err)
+	}
+}
+
+func MigrateRestartScheduleConfig(oldFullID, newFullID string) {
+	if oldFullID == newFullID {
+		return
+	}
+	oldShortID := oldFullID[:12]
+	newShortID := newFullID[:12]
+	if oldShortID == newShortID {
+		return
+	}
+
+	cfg, err := LoadRestartScheduleConfig()
+	if err != nil {
+		logx.Errorf("restart-schedule: failed to load config for migration: %v", err)
+		return
+	}
+
+	setting, ok := cfg.Containers[oldShortID]
+	if !ok {
+		return
+	}
+
+	cfg.Containers[newShortID] = setting
+	delete(cfg.Containers, oldShortID)
+
+	if err := SaveRestartScheduleConfig(cfg); err != nil {
+		logx.Errorf("restart-schedule: failed to save config after migration: %v", err)
+	}
+}
+
+func MigrateContainerConfigs(oldFullID, newFullID string) {
+	MigrateAutoUpdateConfig(oldFullID, newFullID)
+	MigrateRestartScheduleConfig(oldFullID, newFullID)
 }

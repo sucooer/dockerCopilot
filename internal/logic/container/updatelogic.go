@@ -36,9 +36,11 @@ func (l *UpdateLogic) Update(req *types.ContainerUpdateReq) (resp *types.Resp, e
 		}()
 		imageNameAndTag := req.ImageNameAndTag
 		delOldContainer := os.Getenv("DelOldContainer") != "false"
-		err := utiles.UpdateContainer(l.svcCtx, req.Id, req.ContainerName, imageNameAndTag, delOldContainer, taskID)
+		newID, err := utiles.UpdateContainer(l.svcCtx, req.Id, req.ContainerName, imageNameAndTag, delOldContainer, taskID)
 		if err != nil {
 			l.Errorf("Error in UpdateContainer: %v", err)
+		} else if newID != req.Id {
+			utiles.MigrateContainerConfigs(req.Id, newID)
 		}
 	}()
 	resp.Code = 200
