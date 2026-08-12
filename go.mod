@@ -14,6 +14,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/zeromicro/go-zero v1.8.2
 	github.com/zeromicro/x v0.0.0-20240408115609-8224c482b07e
+	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -78,6 +79,5 @@ require (
 	google.golang.org/grpc v1.71.1 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.0 // indirect
 )
