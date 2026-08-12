@@ -5,13 +5,11 @@ WORKDIR /app
 
 ARG TARGETPLATFORM
 
-COPY dc-back/dist/$TARGETPLATFORM/dockerCopilot ./dockerCopilot
-COPY dc-back/etc/. ./etc
-COPY start.sh ./start.sh
+COPY --chmod=755 dc-back/dist/$TARGETPLATFORM/dockerCopilot ./dockerCopilot
+COPY --chmod=755 dc-back/etc/. ./etc
+COPY --chmod=755 start.sh ./start.sh
 
-RUN apk add --no-cache tzdata ca-certificates-bundle \
-    && chmod +x start.sh \
-    && chmod +x dockerCopilot
+RUN apk add --no-cache tzdata ca-certificates-bundle
 
 # 设置环境变量
 ENV secretKey="" \
