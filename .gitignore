@@ -34,3 +34,4 @@ __pycache__/
 /Dockerfile
 /docker-compose.yml
 /data/
+/compose/
