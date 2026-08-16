@@ -44,8 +44,9 @@ func (l *GetLogic) Get(req *types.ComposeNameReq) (resp *types.Resp, err error) 
 	resp.Code = 200
 	resp.Msg = "success"
 	resp.Data = map[string]interface{}{
-		"name":    req.Name,
-		"content": content,
+		"name":       req.Name,
+		"content":    content,
+		"envContent": utiles.GetEnvContent(projectDir),
 	}
 	return resp, nil
 }

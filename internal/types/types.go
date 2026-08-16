@@ -126,10 +126,12 @@ type ComposeNameReq struct {
 }
 
 type ComposeCreateReq struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
+	Name       string `json:"name"`
+	Content    string `json:"content"`
+	EnvContent string `json:"envContent,optional"`
 }
 
 type ComposeUpdateReq struct {
-	Content string `json:"content"`
+	Content    string `json:"content"`
+	EnvContent string `json:"envContent,optional"`
 }

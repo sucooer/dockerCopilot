@@ -34,7 +34,7 @@ func (l *UpdateLogic) Update(req *types.ComposeNameReq, body *types.ComposeUpdat
 		return resp, err
 	}
 	projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
-	err = utiles.UpdateComposeContent(projectDir, body.Content)
+	err = utiles.UpdateComposeContent(projectDir, body.Content, body.EnvContent)
 	if err != nil {
 		resp.Code = 400
 		resp.Msg = err.Error()
