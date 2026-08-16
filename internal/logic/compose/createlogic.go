@@ -32,7 +32,7 @@ func (l *CreateLogic) Create(req *types.ComposeCreateReq) (resp *types.Resp, err
 		resp.Data = map[string]interface{}{}
 		return resp, err
 	}
-	err = utiles.CreateComposeProject(l.svcCtx.ComposeDir, req.Name, req.Content)
+	err = utiles.CreateComposeProject(l.svcCtx.ComposeDir, req.Name, req.Content, req.EnvContent)
 	if err != nil {
 		resp.Code = 400
 		resp.Msg = err.Error()

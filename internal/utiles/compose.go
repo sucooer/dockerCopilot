@@ -56,6 +56,7 @@ type ComposeProject struct {
 	DirPath      string `json:"dirPath"`
 	Deployed     bool   `json:"deployed"`
 	RunningCount int    `json:"runningCount"`
+	HasEnv       bool   `json:"hasEnv"`
 }
 
 type composeFile struct {
@@ -168,12 +169,13 @@ func ListComposeProjects(svcCtx *svc.ServiceContext) ([]ComposeProject, error) {
 				}
 			}
 
-			projects = append(projects, ComposeProject{
-				Name:         entry.Name(),
-				DirPath:      dir,
-				Deployed:     runningCount > 0,
-				RunningCount: runningCount,
-			})
+		projects = append(projects, ComposeProject{
+			Name:         entry.Name(),
+			DirPath:      dir,
+			Deployed:     runningCount > 0,
+			RunningCount: runningCount,
+			HasEnv:       fileExists(filepath.Join(dir, ".env")),
+		})
 		}
 	}
 	return projects, nil
@@ -191,7 +193,22 @@ func GetComposeContent(projectDir string) (string, error) {
 	return string(data), nil
 }
 
-func CreateComposeProject(composeDir, name, content string) error {
+// GetEnvContent 读取 .env 文件内容，不存在时返回空字符串。
+func GetEnvContent(projectDir string) string {
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// fileExists 检查文件是否存在。
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func CreateComposeProject(composeDir, name, content, envContent string) error {
 	if err := ValidateComposeName(name); err != nil {
 		return err
 	}
@@ -207,13 +224,29 @@ func CreateComposeProject(composeDir, name, content string) error {
 		os.RemoveAll(projectDir)
 		return fmt.Errorf("failed to write compose file: %w", err)
 	}
+	if envContent != "" {
+		envFile := filepath.Join(projectDir, ".env")
+		if err := os.WriteFile(envFile, []byte(envContent), 0644); err != nil {
+			os.RemoveAll(projectDir)
+			return fmt.Errorf("failed to write .env file: %w", err)
+		}
+	}
 	return nil
 }
 
-func UpdateComposeContent(projectDir, content string) error {
+func UpdateComposeContent(projectDir, content, envContent string) error {
 	composeFile := filepath.Join(projectDir, "docker-compose.yml")
 	if err := os.WriteFile(composeFile, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to update compose file: %w", err)
+	}
+	envFile := filepath.Join(projectDir, ".env")
+	if envContent != "" {
+		if err := os.WriteFile(envFile, []byte(envContent), 0644); err != nil {
+			return fmt.Errorf("failed to update .env file: %w", err)
+		}
+	} else {
+		// envContent 为空时删除 .env 文件（如果存在）
+		os.Remove(envFile)
 	}
 	return nil
 }
@@ -265,6 +298,9 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 		fail("部署失败", fmt.Sprintf("解析 compose 文件失败: %v", err))
 		return
 	}
+
+	// 加载 .env 文件，合并到环境变量（inline environment 优先）
+	envVars := loadEnvFile(projectDir)
 
 	status(5, "检查网络", "正在检查 Docker 网络...")
 
@@ -343,7 +379,20 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 			containerConfig.Cmd = strings.Fields(service.Command)
 		}
 
+		// 先从 .env 合并，再用 inline environment 覆盖
+		for k, v := range envVars {
+			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
+		}
 		for k, v := range service.Environment {
+			// 移除已存在的同名 .env 变量，用 inline 值覆盖
+			prefix := k + "="
+			filtered := containerConfig.Env[:0]
+			for _, e := range containerConfig.Env {
+				if !strings.HasPrefix(e, prefix) {
+					filtered = append(filtered, e)
+				}
+			}
+			containerConfig.Env = filtered
 			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 
@@ -450,4 +499,34 @@ func orderServices(services map[string]composeService) []string {
 	}
 
 	return ordered
+}
+
+// loadEnvFile 读取 .env 文件并解析为 KEY=VALUE 映射。
+// 忽略注释行和空行，支持 # 注释。
+func loadEnvFile(projectDir string) map[string]string {
+	envFile := filepath.Join(projectDir, ".env")
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		return nil
+	}
+	vars := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// 支持 export KEY=VALUE 语法
+		line = strings.TrimPrefix(line, "export ")
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			// 去除引号包裹
+			if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+				value = value[1 : len(value)-1]
+			}
+			vars[key] = value
+		}
+	}
+	return vars
 }
