@@ -27,6 +27,12 @@ func NewGetLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetLogic {
 
 func (l *GetLogic) Get(req *types.ComposeNameReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
+	if err := utiles.ValidateComposeName(req.Name); err != nil {
+		resp.Code = 400
+		resp.Msg = err.Error()
+		resp.Data = map[string]interface{}{}
+		return resp, err
+	}
 	projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
 	content, err := utiles.GetComposeContent(projectDir)
 	if err != nil {

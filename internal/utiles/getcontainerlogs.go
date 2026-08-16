@@ -10,6 +10,10 @@ import (
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 )
 
+const maxLogBytes = 4 << 20
+
+const logTruncatedMarker = "\n... 日志过大已截断 ...\n"
+
 func GetContainerLogs(ctx *svc.ServiceContext, id string, tail int, stdout, stderr bool) (string, error) {
 	options := container.LogsOptions{
 		ShowStdout: stdout,
@@ -23,9 +27,13 @@ func GetContainerLogs(ctx *svc.ServiceContext, id string, tail int, stdout, stde
 	}
 	defer reader.Close()
 
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, maxLogBytes+1))
 	if err != nil {
 		return "", err
+	}
+	truncated := len(data) > maxLogBytes
+	if truncated {
+		data = data[:maxLogBytes]
 	}
 
 	// Docker 的 ContainerLogs 返回的是多路复用帧：
@@ -33,7 +41,14 @@ func GetContainerLogs(ctx *svc.ServiceContext, id string, tail int, stdout, stde
 	// 仅当同时请求 stdout 和 stderr 时才是复用格式。
 	// 这里按帧头解析，剥离头部只保留日志内容。
 	if stdout && stderr {
-		return stripDockerStreamHeader(data), nil
+		logs := stripDockerStreamHeader(data)
+		if truncated {
+			logs += logTruncatedMarker
+		}
+		return logs, nil
+	}
+	if truncated {
+		return string(data) + logTruncatedMarker, nil
 	}
 	return string(data), nil
 }

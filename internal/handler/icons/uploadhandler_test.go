@@ -19,14 +19,10 @@ func TestUploadHandlerRejectsNonImageFiles(t *testing.T) {
 	imageDir := filepath.Join(tempDir, "image")
 	testFilename := "codex-upload-vuln.json"
 
-	originalImageUploadDir := imageUploadDir
-	originalImageLogosPath := imageLogosPath
-	imageUploadDir = imageDir
-	imageLogosPath = jsPath
-	t.Cleanup(func() {
-		imageUploadDir = originalImageUploadDir
-		imageLogosPath = originalImageLogosPath
-	})
+	svcCtx := &svc.ServiceContext{
+		ImageDir:       imageDir,
+		ImageLogosPath: jsPath,
+	}
 
 	originalContent, readErr := os.ReadFile(jsPath)
 	hadOriginal := readErr == nil
@@ -62,7 +58,7 @@ func TestUploadHandlerRejectsNonImageFiles(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 
-	UploadHandler(&svc.ServiceContext{})(rec, req)
+	UploadHandler(svcCtx)(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for non-image upload, got %d with body %s", rec.Code, rec.Body.String())

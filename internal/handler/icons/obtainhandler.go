@@ -14,7 +14,7 @@ import (
 
 func ObtainHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		jsPath := "/data/config/imageLogos.js"
+		jsPath := svcCtx.ImageLogosPath
 		logx.Infof("Reading icons from: %s", jsPath)
 
 		contentBytes, err := os.ReadFile(jsPath)

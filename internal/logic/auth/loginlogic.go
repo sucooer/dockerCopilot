@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"github.com/golang-jwt/jwt"
+	"github.com/google/uuid"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 	"github.com/onlyLTY/dockerCopilot/internal/types"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -30,7 +32,7 @@ func NewLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *LoginLogic 
 
 func (l *LoginLogic) Login(req *types.LoginReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
-	if l.svcCtx.Config.Auth.AccessSecret != req.SecretKey {
+	if !secretKeyEqual(l.svcCtx.Config.Auth.AccessSecret, req.SecretKey) {
 		resp.Code = 401
 		resp.Msg = "无效的secretKey"
 		resp.Data = JwtResponse{Jwt: ""}
@@ -56,7 +58,13 @@ func (l *LoginLogic) getJwtToken(secretKey string, iat, seconds int64) (string, 
 	claims := make(jwt.MapClaims)
 	claims["iat"] = iat
 	claims["exp"] = iat + seconds
+	claims["iss"] = "dockerCopilot"
+	claims["jti"] = uuid.New().String()
 	token := jwt.New(jwt.SigningMethodHS256)
 	token.Claims = claims
 	return token.SignedString([]byte(secretKey))
+}
+
+func secretKeyEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

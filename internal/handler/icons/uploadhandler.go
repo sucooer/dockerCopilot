@@ -28,8 +28,9 @@ var allowedImageTypes = map[string]string{
 
 func UploadHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. 解析 Multipart 表单
-		err := r.ParseMultipartForm(10 << 20) // 10MB 限制
+		// 1. 限制整个请求体大小（含 multipart 临时文件），防止超大文件耗尽磁盘
+		r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+		err := r.ParseMultipartForm(10 << 20) // 10MB 内存缓冲阈值，超出部分流式写临时文件
 		if err != nil {
 			writeUploadError(w, http.StatusBadRequest, "failed to parse form")
 			return
@@ -50,7 +51,7 @@ func UploadHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		}
 
 		// 3. 确保目录存在 (防御性编程)
-		dataPath := imageUploadDir
+		dataPath := svcCtx.ImageDir
 		if err := os.MkdirAll(dataPath, 0o755); err != nil {
 			writeUploadError(w, http.StatusInternalServerError, "failed to prepare upload dir")
 			return
@@ -77,7 +78,7 @@ func UploadHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 		}
 
 		// 5. 更新 imageLogos.js
-		jsPath := imageLogosPath
+		jsPath := svcCtx.ImageLogosPath
 		if err := updateImageLogosJS(jsPath, imageNameKey, filename); err != nil {
 			_ = os.Remove(dstPath)
 			writeUploadError(w, http.StatusInternalServerError, "failed to update config")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -15,8 +16,26 @@ import (
 
 const restartScheduleFile = "restart-schedule.json"
 
+// restartScheduleMu 串行化 restart-schedule 配置的读-改-写，
+// 防止 cron 扫描与手动设置并发时丢失更新
+var restartScheduleMu sync.Mutex
+
 func restartSchedulePath() string {
 	return filepath.Join(configDir, restartScheduleFile)
+}
+
+// UpdateRestartScheduleConfig 在锁内执行配置的读-改-写
+func UpdateRestartScheduleConfig(mutate func(cfg *types.RestartScheduleConfig) error) error {
+	restartScheduleMu.Lock()
+	defer restartScheduleMu.Unlock()
+	cfg, err := LoadRestartScheduleConfig()
+	if err != nil {
+		return err
+	}
+	if err := mutate(cfg); err != nil {
+		return err
+	}
+	return SaveRestartScheduleConfig(cfg)
 }
 
 func LoadRestartScheduleConfig() (*types.RestartScheduleConfig, error) {
@@ -51,6 +70,10 @@ func SaveRestartScheduleConfig(cfg *types.RestartScheduleConfig) error {
 }
 
 func RunScheduledRestart(ctx *svc.ServiceContext) {
+	// 整个扫描期间持有配置锁，防止与手动设置并发导致配置丢失
+	restartScheduleMu.Lock()
+	defer restartScheduleMu.Unlock()
+
 	cfg, err := LoadRestartScheduleConfig()
 	if err != nil {
 		return

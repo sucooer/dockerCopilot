@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/filters"
@@ -19,8 +20,26 @@ import (
 const configDir = "/data/config"
 const configFile = "auto-update.json"
 
+// autoUpdateMu 串行化 auto-update 配置的读-改-写，
+// 防止 cron 扫描与手动更新/设置并发时丢失更新
+var autoUpdateMu sync.Mutex
+
 func autoUpdateConfigPath() string {
 	return filepath.Join(configDir, configFile)
+}
+
+// UpdateAutoUpdateConfig 在锁内执行配置的读-改-写
+func UpdateAutoUpdateConfig(mutate func(cfg *types.AutoUpdateConfig) error) error {
+	autoUpdateMu.Lock()
+	defer autoUpdateMu.Unlock()
+	cfg, err := LoadAutoUpdateConfig()
+	if err != nil {
+		return err
+	}
+	if err := mutate(cfg); err != nil {
+		return err
+	}
+	return SaveAutoUpdateConfig(cfg)
 }
 
 func LoadAutoUpdateConfig() (*types.AutoUpdateConfig, error) {
@@ -58,6 +77,10 @@ func SaveAutoUpdateConfig(cfg *types.AutoUpdateConfig) error {
 }
 
 func RunAutoUpdateScan(ctx *svc.ServiceContext) {
+	// 整个扫描期间持有配置锁，防止与手动更新/设置并发导致配置丢失
+	autoUpdateMu.Lock()
+	defer autoUpdateMu.Unlock()
+
 	cfg, err := LoadAutoUpdateConfig()
 	if err != nil {
 		logx.Errorf("auto-update: failed to load config: %v", err)
@@ -118,7 +141,7 @@ func RunAutoUpdateScan(ctx *svc.ServiceContext) {
 		}
 
 		ctx.HubImageInfo.CheckUpdate(imageList)
-		checkResult, exists := ctx.HubImageInfo.Data[c.ImageID]
+		checkResult, exists := ctx.HubImageInfo.Get(c.ImageID)
 
 		needsUpdate := exists && checkResult.NeedUpdate
 
@@ -170,22 +193,16 @@ func MigrateAutoUpdateConfig(oldFullID, newFullID string) {
 		return
 	}
 
-	cfg, err := LoadAutoUpdateConfig()
-	if err != nil {
-		logx.Errorf("auto-update: failed to load config for migration: %v", err)
-		return
-	}
-
-	setting, ok := cfg.Containers[oldShortID]
-	if !ok {
-		return
-	}
-
-	cfg.Containers[newShortID] = setting
-	delete(cfg.Containers, oldShortID)
-
-	if err := SaveAutoUpdateConfig(cfg); err != nil {
-		logx.Errorf("auto-update: failed to save config after migration: %v", err)
+	if err := UpdateAutoUpdateConfig(func(cfg *types.AutoUpdateConfig) error {
+		setting, ok := cfg.Containers[oldShortID]
+		if !ok {
+			return nil
+		}
+		cfg.Containers[newShortID] = setting
+		delete(cfg.Containers, oldShortID)
+		return nil
+	}); err != nil {
+		logx.Errorf("auto-update: failed to migrate config: %v", err)
 	}
 }
 
@@ -199,22 +216,16 @@ func MigrateRestartScheduleConfig(oldFullID, newFullID string) {
 		return
 	}
 
-	cfg, err := LoadRestartScheduleConfig()
-	if err != nil {
-		logx.Errorf("restart-schedule: failed to load config for migration: %v", err)
-		return
-	}
-
-	setting, ok := cfg.Containers[oldShortID]
-	if !ok {
-		return
-	}
-
-	cfg.Containers[newShortID] = setting
-	delete(cfg.Containers, oldShortID)
-
-	if err := SaveRestartScheduleConfig(cfg); err != nil {
-		logx.Errorf("restart-schedule: failed to save config after migration: %v", err)
+	if err := UpdateRestartScheduleConfig(func(cfg *types.RestartScheduleConfig) error {
+		setting, ok := cfg.Containers[oldShortID]
+		if !ok {
+			return nil
+		}
+		cfg.Containers[newShortID] = setting
+		delete(cfg.Containers, oldShortID)
+		return nil
+	}); err != nil {
+		logx.Errorf("restart-schedule: failed to migrate config: %v", err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,9 @@ import (
 	"github.com/onlyLTY/dockerCopilot/internal/types"
 	"github.com/zeromicro/go-zero/core/logx"
 )
+
+// notifyHTTPClient 通知通道共用客户端，带超时防止外部服务挂起阻塞 cron
+var notifyHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 const notifyConfigFile = "notification.json"
 
@@ -104,7 +108,7 @@ func sendTelegram(ch types.NotifyChannel, title, msg string) error {
 	if ch.BotToken == "" || ch.ChatID == "" {
 		return fmt.Errorf("telegram: botToken or chatId is empty")
 	}
-	text := fmt.Sprintf("%s\n\n%s", title, msg)
+	text := html.EscapeString(fmt.Sprintf("%s\n\n%s", title, msg))
 	body := map[string]interface{}{
 		"chat_id":    ch.ChatID,
 		"text":       text,
@@ -112,7 +116,7 @@ func sendTelegram(ch types.NotifyChannel, title, msg string) error {
 	}
 	payload, _ := json.Marshal(body)
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", ch.BotToken)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(payload))
+	resp, err := notifyHTTPClient.Post(url, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("telegram: %w", err)
 	}
@@ -133,7 +137,7 @@ func sendServerChan(ch types.NotifyChannel, title, msg string) error {
 	}
 	payload, _ := json.Marshal(body)
 	url := fmt.Sprintf("https://sctapi.ftqq.com/%s.send", ch.SendKey)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(payload))
+	resp, err := notifyHTTPClient.Post(url, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("serverchan: %w", err)
 	}
@@ -153,7 +157,7 @@ func sendWebhook(ch types.NotifyChannel, title, msg string) error {
 		"content": msg,
 	}
 	payload, _ := json.Marshal(body)
-	resp, err := http.Post(ch.WebhookURL, "application/json", bytes.NewReader(payload))
+	resp, err := notifyHTTPClient.Post(ch.WebhookURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("webhook: %w", err)
 	}

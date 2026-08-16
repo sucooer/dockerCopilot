@@ -12,8 +12,7 @@ COPY --chmod=755 start.sh ./start.sh
 RUN apk add --no-cache tzdata ca-certificates-bundle
 
 # 设置环境变量
-ENV secretKey="" \
-    DOCKER_HOST="unix:///var/run/docker.sock" \
+ENV DOCKER_HOST="unix:///var/run/docker.sock" \
     BACKUP_DIR="/data/backups" \
     COMPOSE_DIR="/data/compose" \
     TZ="Asia/Shanghai"
