@@ -35,3 +35,6 @@ __pycache__/
 /docker-compose.yml
 /data/
 /compose/
+# 本机部署配置（含密钥）
+/.env
+/dc-back/
