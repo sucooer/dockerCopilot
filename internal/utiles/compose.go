@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -24,6 +24,21 @@ var composeFileNames = []string{
 	"docker-compose.yaml",
 	"compose.yml",
 	"compose.yaml",
+}
+
+var composeNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func ValidateComposeName(name string) error {
+	if name == "" {
+		return fmt.Errorf("项目名不能为空")
+	}
+	if len(name) > 128 {
+		return fmt.Errorf("项目名过长")
+	}
+	if !composeNamePattern.MatchString(name) {
+		return fmt.Errorf("非法项目名，仅允许字母、数字、点、下划线和短横线，且不能以点开头")
+	}
+	return nil
 }
 
 func findComposeFile(dir string) (string, error) {
@@ -177,6 +192,9 @@ func GetComposeContent(projectDir string) (string, error) {
 }
 
 func CreateComposeProject(composeDir, name, content string) error {
+	if err := ValidateComposeName(name); err != nil {
+		return err
+	}
 	projectDir := filepath.Join(composeDir, name)
 	if _, err := os.Stat(projectDir); err == nil {
 		return fmt.Errorf("compose project '%s' already exists", name)
@@ -205,157 +223,6 @@ func DeleteComposeProject(projectDir string) error {
 		return fmt.Errorf("failed to delete compose project: %w", err)
 	}
 	return nil
-}
-
-func ComposeUp(svcCtx *svc.ServiceContext, projectDir string) (string, error) {
-	ctx := context.Background()
-	composeFilePath, err := findComposeFile(projectDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to read compose file: %w", err)
-	}
-	data, err := os.ReadFile(composeFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read compose file: %w", err)
-	}
-
-	var cf composeFile
-	if err := yaml.Unmarshal(data, &cf); err != nil {
-		return "", fmt.Errorf("failed to parse compose file: %w", err)
-	}
-
-	var output strings.Builder
-
-	for networkName := range cf.Networks {
-		_, err := svcCtx.DockerClient.NetworkInspect(ctx, networkName, network.InspectOptions{})
-		if err != nil {
-			netResp, err := svcCtx.DockerClient.NetworkCreate(ctx, networkName, network.CreateOptions{
-				Driver: "bridge",
-			})
-			if err != nil {
-				return "", fmt.Errorf("failed to create network '%s': %w", networkName, err)
-			}
-			output.WriteString(fmt.Sprintf("Network %s created (id: %s)\n", networkName, netResp.ID))
-		}
-	}
-
-	orderedServices := orderServices(cf.Services)
-
-	for _, svcName := range orderedServices {
-		svc := cf.Services[svcName]
-
-		if svc.Image == "" {
-			return "", fmt.Errorf("service '%s' has no image specified", svcName)
-		}
-
-		output.WriteString(fmt.Sprintf("Pulling image %s...\n", svc.Image))
-		reader, err := svcCtx.DockerClient.ImagePull(ctx, svc.Image, image.PullOptions{})
-		if err != nil {
-			return "", fmt.Errorf("failed to pull image '%s' for service '%s': %w", svc.Image, svcName, err)
-		}
-		for {
-			var buf [4096]byte
-			_, err := reader.Read(buf[:])
-			if err != nil {
-				break
-			}
-		}
-		reader.Close()
-		output.WriteString(fmt.Sprintf("Image %s pulled\n", svc.Image))
-
-		containerConfig := &container.Config{
-			Image: svc.Image,
-			Env:   make([]string, 0),
-		}
-
-		if svc.ContainerName != "" {
-			containerConfig.Hostname = svcName
-		}
-		if svc.Command != "" {
-			containerConfig.Cmd = strings.Fields(svc.Command)
-		}
-
-		for k, v := range svc.Environment {
-			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
-		}
-
-		restartPolicy := container.RestartPolicyMode(strings.ToLower(svc.Restart))
-		if restartPolicy == "" {
-			restartPolicy = container.RestartPolicyMode("no")
-		}
-		hostConfig := &container.HostConfig{
-			RestartPolicy: container.RestartPolicy{Name: restartPolicy},
-		}
-
-		for _, portStr := range svc.Ports {
-			parts := strings.Split(portStr, ":")
-			var hostPort, containerPort string
-			switch len(parts) {
-			case 2:
-				hostPort = parts[0]
-				containerPort = parts[1]
-			case 3:
-				hostPort = parts[1]
-				containerPort = parts[2]
-			default:
-				continue
-			}
-
-			portProto := nat.Port(fmt.Sprintf("%s/tcp", containerPort))
-			if containerConfig.ExposedPorts == nil {
-				containerConfig.ExposedPorts = nat.PortSet{}
-			}
-			containerConfig.ExposedPorts[portProto] = struct{}{}
-
-			hostPortInt, _ := strconv.Atoi(hostPort)
-			if hostConfig.PortBindings == nil {
-				hostConfig.PortBindings = nat.PortMap{}
-			}
-			hostConfig.PortBindings[portProto] = []nat.PortBinding{
-				{HostPort: strconv.Itoa(hostPortInt)},
-			}
-		}
-
-		for _, volStr := range svc.Volumes {
-			parts := strings.Split(volStr, ":")
-			if len(parts) >= 2 {
-				source := parts[0]
-				dest := parts[1]
-				if !strings.HasPrefix(source, "/") {
-					source = filepath.Join(projectDir, source)
-				}
-				hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", source, dest))
-			}
-		}
-
-		var networkingConfig *network.NetworkingConfig
-		if len(svc.Networks) > 0 {
-			networkingConfig = &network.NetworkingConfig{
-				EndpointsConfig: make(map[string]*network.EndpointSettings),
-			}
-			for _, netName := range svc.Networks {
-				networkingConfig.EndpointsConfig[netName] = &network.EndpointSettings{}
-			}
-		}
-
-		containerName := svc.ContainerName
-		if containerName == "" {
-			containerName = svcName
-		}
-
-		createResp, err := svcCtx.DockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
-		if err != nil {
-			return "", fmt.Errorf("failed to create container for service '%s': %w", svcName, err)
-		}
-		output.WriteString(fmt.Sprintf("Container %s created (id: %s)\n", containerName, createResp.ID[:12]))
-
-		err = svcCtx.DockerClient.ContainerStart(ctx, createResp.ID, container.StartOptions{})
-		if err != nil {
-			return "", fmt.Errorf("failed to start container for service '%s': %w", svcName, err)
-		}
-		output.WriteString(fmt.Sprintf("Container %s started\n", containerName))
-	}
-
-	return output.String(), nil
 }
 
 func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
@@ -489,29 +356,23 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 		}
 
 		for _, portStr := range service.Ports {
-			parts := strings.Split(portStr, ":")
-			var hostPort, containerPort string
-			switch len(parts) {
-			case 2:
-				hostPort = parts[0]
-				containerPort = parts[1]
-			case 3:
-				hostPort = parts[1]
-				containerPort = parts[2]
-			default:
-				continue
+			// 用 Docker 官方解析器处理 "80:80"、"80:80/udp"、"80:80:udp"、"127.0.0.1:80:80" 等格式
+			specs, err := nat.ParsePortSpec(portStr)
+			if err != nil {
+				fail("配置容器失败", fmt.Sprintf("服务 %s 端口 %s 解析失败: %v", svcName, portStr, err))
+				return
 			}
-			portProto := nat.Port(fmt.Sprintf("%s/tcp", containerPort))
 			if containerConfig.ExposedPorts == nil {
 				containerConfig.ExposedPorts = nat.PortSet{}
 			}
-			containerConfig.ExposedPorts[portProto] = struct{}{}
-			hostPortInt, _ := strconv.Atoi(hostPort)
 			if hostConfig.PortBindings == nil {
 				hostConfig.PortBindings = nat.PortMap{}
 			}
-			hostConfig.PortBindings[portProto] = []nat.PortBinding{
-				{HostPort: strconv.Itoa(hostPortInt)},
+			for _, spec := range specs {
+				containerConfig.ExposedPorts[spec.Port] = struct{}{}
+				if spec.Binding.HostPort != "" || spec.Binding.HostIP != "" {
+					hostConfig.PortBindings[spec.Port] = append(hostConfig.PortBindings[spec.Port], spec.Binding)
+				}
 			}
 		}
 

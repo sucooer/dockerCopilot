@@ -27,6 +27,12 @@ func NewUpdateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateLogi
 
 func (l *UpdateLogic) Update(req *types.ComposeNameReq, body *types.ComposeUpdateReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
+	if err := utiles.ValidateComposeName(req.Name); err != nil {
+		resp.Code = 400
+		resp.Msg = err.Error()
+		resp.Data = map[string]interface{}{}
+		return resp, err
+	}
 	projectDir := filepath.Join(l.svcCtx.ComposeDir, req.Name)
 	err = utiles.UpdateComposeContent(projectDir, body.Content)
 	if err != nil {

@@ -102,7 +102,7 @@ func formatVolumeServiceConfig(containerJSON dockerTypes.ContainerJSON, s *compo
 		v.Type = string(containerVolume.Type)
 		v.Source = containerVolume.Source
 		v.Target = containerVolume.Destination
-		v.ReadOnly = containerVolume.RW
+		v.ReadOnly = !containerVolume.RW
 		s.Volumes = append(s.Volumes, v)
 	}
 }

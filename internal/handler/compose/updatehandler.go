@@ -14,6 +14,7 @@ import (
 
 func UpdateHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB
 		bodyBytes, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 

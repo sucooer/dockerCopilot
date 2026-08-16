@@ -28,6 +28,12 @@ func NewUpLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpLogic {
 
 func (l *UpLogic) Up(req *types.ComposeNameReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
+	if err := utiles.ValidateComposeName(req.Name); err != nil {
+		resp.Code = 400
+		resp.Msg = err.Error()
+		resp.Data = map[string]interface{}{}
+		return resp, err
+	}
 	taskID := uuid.New().String()
 	go func() {
 		defer func() {

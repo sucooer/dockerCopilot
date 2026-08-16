@@ -32,20 +32,14 @@ func (l *UpdateLogic) Update(req *types.AutoUpdateUpdateReq) (resp *types.Resp, 
 		req.IntervalMinutes = 360
 	}
 
-	cfg, err := utiles.LoadAutoUpdateConfig()
+	err = utiles.UpdateAutoUpdateConfig(func(cfg *types.AutoUpdateConfig) error {
+		cfg.Containers[req.Id] = types.ContainerAutoUpdate{
+			Enabled:         req.Enabled,
+			IntervalMinutes: req.IntervalMinutes,
+		}
+		return nil
+	})
 	if err != nil {
-		resp.Code = 500
-		resp.Msg = err.Error()
-		resp.Data = map[string]interface{}{}
-		return resp, err
-	}
-
-	cfg.Containers[req.Id] = types.ContainerAutoUpdate{
-		Enabled:         req.Enabled,
-		IntervalMinutes: req.IntervalMinutes,
-	}
-
-	if err := utiles.SaveAutoUpdateConfig(cfg); err != nil {
 		resp.Code = 500
 		resp.Msg = err.Error()
 		resp.Data = map[string]interface{}{}

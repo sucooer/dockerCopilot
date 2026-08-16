@@ -115,6 +115,7 @@ jobs:
 
       - name: Upload Asset for ${{ matrix.arch }}
         run: |
-          gh release upload --clobber ${{ env.version }} dockerCopilot-${{ matrix.arch }}.tar.gz
+          sha256sum dockerCopilot-${{ matrix.arch }}.tar.gz | tee checksums-${{ matrix.arch }}.txt
+          gh release upload --clobber ${{ env.version }} dockerCopilot-${{ matrix.arch }}.tar.gz checksums-${{ matrix.arch }}.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

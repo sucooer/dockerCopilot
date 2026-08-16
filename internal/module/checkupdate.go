@@ -1,7 +1,6 @@
 package module
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	ref "github.com/distribution/reference"
@@ -12,6 +11,7 @@ import (
 	"net/http"
 	url2 "net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,7 +19,11 @@ import (
 type ImageCheckList struct {
 	NeedUpdate bool
 }
+
+// ImageUpdateData 镜像更新检查结果缓存。
+// Data 由 cron/启动 goroutine 写入、HTTP 请求并发读取，必须通过 Get/Set 访问。
 type ImageUpdateData struct {
+	mu   sync.RWMutex
 	Data map[string]ImageCheckList
 }
 
@@ -29,6 +33,21 @@ func NewImageCheck() *ImageUpdateData {
 	return &ImageUpdateData{
 		Data: map[string]ImageCheckList{},
 	}
+}
+
+// Get 读取单个镜像的检查结果
+func (i *ImageUpdateData) Get(imageID string) (ImageCheckList, bool) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	check, ok := i.Data[imageID]
+	return check, ok
+}
+
+// Set 写入单个镜像的检查结果
+func (i *ImageUpdateData) Set(imageID string, check ImageCheckList) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.Data[imageID] = check
 }
 func (i *ImageUpdateData) CheckUpdate(imageList []types.Image) {
 	for _, image := range imageList {
@@ -74,7 +93,7 @@ func (i *ImageUpdateData) checkSingleImage(image types.Image) {
 			needUpdate = false
 		}
 	}
-	i.Data[image.ID] = ImageCheckList{NeedUpdate: needUpdate}
+	i.Set(image.ID, ImageCheckList{NeedUpdate: needUpdate})
 }
 
 func BuildManifestURL(image types.Image) (string, error) {
@@ -114,9 +133,8 @@ func GetDigest(url string, token string) (string, error) {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 	}
-	client := &http.Client{Transport: tr}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 
 	req, _ := http.NewRequest("HEAD", url, nil)
 

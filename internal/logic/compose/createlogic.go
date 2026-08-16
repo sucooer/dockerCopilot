@@ -26,6 +26,12 @@ func NewCreateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateLogi
 
 func (l *CreateLogic) Create(req *types.ComposeCreateReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
+	if err := utiles.ValidateComposeName(req.Name); err != nil {
+		resp.Code = 400
+		resp.Msg = err.Error()
+		resp.Data = map[string]interface{}{}
+		return resp, err
+	}
 	err = utiles.CreateComposeProject(l.svcCtx.ComposeDir, req.Name, req.Content)
 	if err != nil {
 		resp.Code = 400

@@ -26,13 +26,6 @@ func NewUpdateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateLogi
 
 func (l *UpdateLogic) Update(req *types.RestartScheduleUpdateReq) (resp *types.Resp, err error) {
 	resp = &types.Resp{}
-	cfg, err := utiles.LoadRestartScheduleConfig()
-	if err != nil {
-		resp.Code = 500
-		resp.Msg = err.Error()
-		resp.Data = map[string]interface{}{}
-		return resp, err
-	}
 
 	allowed := map[int]bool{10: true, 30: true, 60: true, 360: true, 720: true, 1440: true}
 	if !allowed[req.IntervalMinutes] {
@@ -42,12 +35,14 @@ func (l *UpdateLogic) Update(req *types.RestartScheduleUpdateReq) (resp *types.R
 		return resp, nil
 	}
 
-	cfg.Containers[req.Id] = types.ContainerRestartSchedule{
-		Enabled:         req.Enabled,
-		IntervalMinutes: req.IntervalMinutes,
-	}
-
-	if err := utiles.SaveRestartScheduleConfig(cfg); err != nil {
+	err = utiles.UpdateRestartScheduleConfig(func(cfg *types.RestartScheduleConfig) error {
+		cfg.Containers[req.Id] = types.ContainerRestartSchedule{
+			Enabled:         req.Enabled,
+			IntervalMinutes: req.IntervalMinutes,
+		}
+		return nil
+	})
+	if err != nil {
 		resp.Code = 500
 		resp.Msg = err.Error()
 		resp.Data = map[string]interface{}{}

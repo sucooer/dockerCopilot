@@ -25,8 +25,8 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 	server.AddRoutes(
 		[]rest.Route{
 			{
-				Method:  http.MethodGet,
-				Path:    "/",
+				Method: http.MethodGet,
+				Path:   "/",
 				Handler: webindexHandler(serverCtx),
 			},
 		},
@@ -39,12 +39,22 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/auth",
 				Handler: auth.LoginHandler(serverCtx),
 			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/auth/logout",
+				Handler: auth.LogoutHandler(serverCtx),
+			},
 		},
 		rest.WithPrefix("/api"),
 	)
 
+	// 全局限流 + JWT 认证中间件链
+	globalAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		return svc.RateLimitMiddleware(serverCtx.RateLimiter)(CookieJwtMiddleware(serverCtx)(next))
+	}
+
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodDelete,
 				Path:    "/container/:id",
@@ -107,16 +117,20 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 			{
 				Method:  http.MethodGet,
+				Path:    "/container/:id",
+				Handler: container.ContainerInfoHandler(serverCtx),
+			},
+			{
+				Method:  http.MethodGet,
 				Path:    "/containers",
 				Handler: container.ContainersListHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodPost,
 				Path:    "/",
@@ -127,13 +141,12 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/",
 				Handler: icons.ObtainHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api/icons"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodDelete,
 				Path:    "/image/:id",
@@ -144,25 +157,23 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/images",
 				Handler: image.ImagesListHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodGet,
 				Path:    "/progress/:taskid",
 				Handler: progress.GetProgressHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodPut,
 				Path:    "/program",
@@ -173,13 +184,12 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/version",
 				Handler: version.VersionHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodGet,
 				Path:    "/compose",
@@ -210,13 +220,12 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/compose/:name/up",
 				Handler: compose.UpHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodGet,
 				Path:    "/auto-update",
@@ -232,13 +241,12 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/auto-update/run",
 				Handler: autoupdate.RunHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodGet,
 				Path:    "/notify/config",
@@ -254,13 +262,12 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/notify/test",
 				Handler: notify.TestHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 
 	server.AddRoutes(
-		[]rest.Route{
+		rest.WithMiddleware(globalAuth, []rest.Route{
 			{
 				Method:  http.MethodGet,
 				Path:    "/restart-schedule",
@@ -276,8 +283,7 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/restart-schedule/run",
 				Handler: restartschedule.RunHandler(serverCtx),
 			},
-		},
-		rest.WithJwt(serverCtx.Config.Auth.AccessSecret),
+		}...),
 		rest.WithPrefix("/api"),
 	)
 }
