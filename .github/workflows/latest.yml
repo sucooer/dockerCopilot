@@ -116,9 +116,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check if beta release already exists
+        if: env.version != 'beta'
+        id: check_beta_release
+        run: |
+          if gh release view beta >/dev/null 2>&1; then
+            echo "RELEASE_EXISTS_BETA=true" >> $GITHUB_ENV
+          else
+            echo "RELEASE_EXISTS_BETA=false" >> $GITHUB_ENV
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create beta GitHub Release if not exists
+        if: env.version != 'beta' && env.RELEASE_EXISTS_BETA == 'false'
+        run: |
+          git log -1 --format=%B > notes-beta.md
+          gh release create beta --title "beta" --notes-file notes-beta.md --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Asset for ${{ matrix.arch }}
         run: |
           sha256sum dockerCopilot-${{ matrix.arch }}.tar.gz | tee checksums-${{ matrix.arch }}.txt
           gh release upload --clobber ${{ env.version }} dockerCopilot-${{ matrix.arch }}.tar.gz checksums-${{ matrix.arch }}.txt
+          if [ "${{ env.version }}" != "beta" ]; then
+            gh release upload --clobber beta dockerCopilot-${{ matrix.arch }}.tar.gz checksums-${{ matrix.arch }}.txt
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
