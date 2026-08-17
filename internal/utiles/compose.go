@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
-	dockerMsgType "github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	dockerMsgType "github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
 	"github.com/onlyLTY/dockerCopilot/internal/svc"
 	"gopkg.in/yaml.v3"
@@ -84,15 +84,15 @@ func (n *composeNetworks) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type composeService struct {
-	Image         string            `yaml:"image"`
-	ContainerName string            `yaml:"container_name"`
-	Ports         []string          `yaml:"ports"`
-	Volumes       []string          `yaml:"volumes"`
-	Environment   envMap            `yaml:"environment"`
-	Restart       string            `yaml:"restart"`
-	Networks      composeNetworks   `yaml:"networks"`
-	DependsOn     []string          `yaml:"depends_on"`
-	Command       string            `yaml:"command"`
+	Image         string          `yaml:"image"`
+	ContainerName string          `yaml:"container_name"`
+	Ports         []string        `yaml:"ports"`
+	Volumes       []string        `yaml:"volumes"`
+	Environment   envMap          `yaml:"environment"`
+	Restart       string          `yaml:"restart"`
+	Networks      composeNetworks `yaml:"networks"`
+	DependsOn     []string        `yaml:"depends_on"`
+	Command       string          `yaml:"command"`
 }
 
 type composeNetwork struct {
@@ -102,6 +102,10 @@ type composeNetwork struct {
 type composeVolume struct {
 	Driver string `yaml:"driver"`
 }
+
+// expandInherit 标记 environment 列表中 `- VAR`（无等号）语法，
+// 部署时综合宿主机/.env 上下文取值。
+const expandInherit = "\x00inherit"
 
 type envMap map[string]string
 
@@ -118,8 +122,12 @@ func (e *envMap) UnmarshalYAML(value *yaml.Node) error {
 	m = make(map[string]string, len(list))
 	for _, item := range list {
 		parts := strings.SplitN(item, "=", 2)
+		key := strings.TrimSpace(parts[0])
 		if len(parts) == 2 {
-			m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			m[key] = strings.TrimSpace(parts[1])
+		} else {
+			// `- VAR` 语法（仅变量名）：值稍后从宿主机/.env 上下文解析
+			m[key] = expandInherit
 		}
 	}
 	*e = m
@@ -169,13 +177,13 @@ func ListComposeProjects(svcCtx *svc.ServiceContext) ([]ComposeProject, error) {
 				}
 			}
 
-		projects = append(projects, ComposeProject{
-			Name:         entry.Name(),
-			DirPath:      dir,
-			Deployed:     runningCount > 0,
-			RunningCount: runningCount,
-			HasEnv:       fileExists(filepath.Join(dir, ".env")),
-		})
+			projects = append(projects, ComposeProject{
+				Name:         entry.Name(),
+				DirPath:      dir,
+				Deployed:     runningCount > 0,
+				RunningCount: runningCount,
+				HasEnv:       fileExists(filepath.Join(dir, ".env")),
+			})
 		}
 	}
 	return projects, nil
@@ -302,6 +310,46 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 	// 加载 .env 文件，合并到环境变量（inline environment 优先）
 	envVars := loadEnvFile(projectDir)
 
+	// compose 语义的变量插值：宿主机环境变量优先于 .env，
+	// 支持 $VAR / ${VAR} / ${VAR:-default} / ${VAR-default} / ${VAR:?err} / ${VAR?err}
+	var expandErr string
+	lookup := func(key string) (string, bool) {
+		if v, ok := os.LookupEnv(key); ok {
+			return v, true
+		}
+		if v, ok := envVars[key]; ok {
+			return v, true
+		}
+		return "", false
+	}
+	expand := func(s string) string {
+		return os.Expand(s, func(k string) string {
+			def, hasDef, required := "", false, false
+			if i := strings.Index(k, ":?"); i >= 0 {
+				k, required = k[:i], true
+			} else if i := strings.Index(k, "?"); i >= 0 {
+				k, required = k[:i], true
+			} else if i := strings.Index(k, ":-"); i >= 0 {
+				k, def, hasDef = k[:i], k[i+2:], true
+			} else if i := strings.Index(k, "-"); i >= 0 {
+				k, def, hasDef = k[:i], k[i+1:], true
+			}
+			if v, ok := lookup(k); ok {
+				return v
+			}
+			if required {
+				if expandErr == "" {
+					expandErr = fmt.Sprintf("环境变量 %s 未定义", k)
+				}
+				return ""
+			}
+			if hasDef {
+				return def
+			}
+			return ""
+		})
+	}
+
 	status(5, "检查网络", "正在检查 Docker 网络...")
 
 	for networkName := range cf.Networks {
@@ -322,6 +370,11 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 	total := len(orderedServices)
 	for svcIdx, svcName := range orderedServices {
 		service := cf.Services[svcName]
+
+		if expandErr != "" {
+			fail("部署失败", expandErr)
+			return
+		}
 
 		if service.Image == "" {
 			fail("部署失败", fmt.Sprintf("服务 %s 未指定镜像", svcName))
@@ -376,7 +429,7 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 			containerConfig.Hostname = svcName
 		}
 		if service.Command != "" {
-			containerConfig.Cmd = strings.Fields(service.Command)
+			containerConfig.Cmd = strings.Fields(expand(service.Command))
 		}
 
 		// 先从 .env 合并，再用 inline environment 覆盖
@@ -384,6 +437,10 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		for k, v := range service.Environment {
+			// `- VAR` 语法（无默认值）：从宿主机或 .env 取值
+			if v == expandInherit {
+				v, _ = lookup(k)
+			}
 			// 移除已存在的同名 .env 变量，用 inline 值覆盖
 			prefix := k + "="
 			filtered := containerConfig.Env[:0]
@@ -393,7 +450,7 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 				}
 			}
 			containerConfig.Env = filtered
-			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
+			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, expand(v)))
 		}
 
 		restartPolicy := container.RestartPolicyMode(strings.ToLower(service.Restart))
@@ -406,7 +463,7 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 
 		for _, portStr := range service.Ports {
 			// 用 Docker 官方解析器处理 "80:80"、"80:80/udp"、"80:80:udp"、"127.0.0.1:80:80" 等格式
-			specs, err := nat.ParsePortSpec(portStr)
+			specs, err := nat.ParsePortSpec(expand(portStr))
 			if err != nil {
 				fail("配置容器失败", fmt.Sprintf("服务 %s 端口 %s 解析失败: %v", svcName, portStr, err))
 				return
@@ -426,7 +483,7 @@ func AsyncComposeUp(svcCtx *svc.ServiceContext, projectDir, taskID string) {
 		}
 
 		for _, volStr := range service.Volumes {
-			parts := strings.Split(volStr, ":")
+			parts := strings.Split(expand(volStr), ":")
 			if len(parts) >= 2 {
 				source := parts[0]
 				dest := parts[1]
