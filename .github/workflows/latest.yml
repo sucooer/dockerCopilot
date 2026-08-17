@@ -6,8 +6,6 @@ on:
     branches:
       - latest
       - main
-    paths:
-      - version
 
 jobs:
   build-frontend:

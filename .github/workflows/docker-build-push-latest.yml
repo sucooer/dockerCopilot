@@ -141,7 +141,7 @@ jobs:
           fi
 
       - name: Build and push Docker images
-        if: env.changed == 'true'
+        if: env.changed == 'true' || env.version == 'beta'
         uses: docker/build-push-action@v5.0.0
         with:
           context: .
