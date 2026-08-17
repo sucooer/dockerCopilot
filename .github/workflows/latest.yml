@@ -107,9 +107,10 @@ jobs:
       - name: Create GitHub Release if not exists
         if: env.RELEASE_EXISTS == 'false'
         run: |
+          git log -1 --format=%B > notes.md
           gh release create ${{ env.version }} \
             --title "${{ env.version }}" \
-            --notes "Release of version ${{ env.version }}"
+            --notes-file notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
