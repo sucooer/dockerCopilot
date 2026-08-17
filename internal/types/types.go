@@ -48,7 +48,7 @@ type IdReq struct {
 }
 
 type LoginReq struct {
-	SecretKey string `form:"secretKey,optional"`
+	SecretKey string `form:"secretKey,json:secretKey,optional"`
 }
 
 type MsgResp struct {
