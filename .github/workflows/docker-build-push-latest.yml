@@ -136,8 +136,8 @@ jobs:
             echo "tags=${DH_USER}/dockercopilot:beta" >> $GITHUB_OUTPUT
             echo "IMAGE_TAGS=${DH_USER}/dockercopilot:beta"
           else
-            echo "tags=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION}" >> $GITHUB_OUTPUT
-            echo "IMAGE_TAGS=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION}"
+            echo "tags=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION},${DH_USER}/dockercopilot:beta" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAGS=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION},${DH_USER}/dockercopilot:beta"
           fi
 
       - name: Build and push Docker images
