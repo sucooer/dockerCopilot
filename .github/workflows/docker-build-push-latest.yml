@@ -126,6 +126,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Set Docker image tags
+        id: image_tags
+        env:
+          VERSION: ${{ env.version }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ "$VERSION" = "beta" ]; then
+            echo "tags=${DH_USER}/dockercopilot:beta" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAGS=${DH_USER}/dockercopilot:beta"
+          else
+            echo "tags=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION}" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAGS=${DH_USER}/dockercopilot:latest,${DH_USER}/dockercopilot:${VERSION}"
+          fi
+
       - name: Build and push Docker images
         if: env.changed == 'true'
         uses: docker/build-push-action@v5.0.0
@@ -133,9 +147,7 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/dockercopilot:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/dockercopilot:${{ env.version }}
+          tags: ${{ steps.image_tags.outputs.tags }}
           push: true
 
       - name: Skip push notification
